@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>5mdt Android Debloat packages Explainer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 20px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        form {
+            margin-top: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            resize: vertical;
+        }
+
+        button {
+            padding: 10px;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #resultTable {
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #4caf50;
+            color: white;
+        }
+
+        .copyButton {
+            padding: 5px;
+            background-color: #008CBA;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .copyButton:hover {
+            background-color: #007BAA;
+        }
+
+        .codeBlock {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+        }
+
+        .webLinks {
+            color: #008CBA;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        /* Alternating row colors */
+        tr:nth-child(even) {
+            background-color: #dbdbdb;
+        }
+    </style>
+</head>
+<body>
+    <h1>5mdt Android Debloat packages Explainer</h1>
+    <p>Paste here the result of <b>pm list packages</b> command:</p>
+    <form id="debloatForm">
+        <label for="packagesList">Packages List:</label>
+        <textarea id="packagesList" name="packagesList" rows="4" cols="50"></textarea>
+        <br>
+        <button type="button" onclick="analyzePackages()">Analyze</button>
+    </form>
+
+    <div id="resultTable"></div>
+
+    <script>
+        async function fetchJsonData(url) {
+            const response = await fetch(url);
+            const data = await response.json();
+            return data;
+        }
+
+        function copyToClipboard(text) {
+            const tempInput = document.createElement("textarea");
+            tempInput.value = text;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempInput);
+        }
+
+        async function analyzePackages() {
+            const packagesList = document.getElementById("packagesList").value;
+            const packagesArray = packagesList.split('\n').map(line => line.replace(/^package:/, '').trim());
+
+            const aospData = await fetchJsonData('https://raw.githubusercontent.com/MuntashirAkon/android-debloat-list/master/aosp.json');
+            const carrierData = await fetchJsonData('https://raw.githubusercontent.com/MuntashirAkon/android-debloat-list/master/carrier.json');
+            const googleData = await fetchJsonData('https://raw.githubusercontent.com/MuntashirAkon/android-debloat-list/master/google.json');
+            const miscData = await fetchJsonData('https://raw.githubusercontent.com/MuntashirAkon/android-debloat-list/master/misc.json');
+            const oemData = await fetchJsonData('https://raw.githubusercontent.com/MuntashirAkon/android-debloat-list/master/oem.json');
+            const pendingData = await fetchJsonData('https://raw.githubusercontent.com/MuntashirAkon/android-debloat-list/master/pending.json');
+
+            const allData = [...aospData, ...carrierData, ...googleData, ...miscData, ...oemData, ...pendingData];
+
+            const resultTable = document.getElementById("resultTable");
+            resultTable.innerHTML = ""; // Clear previous results
+
+            const table = document.createElement("table");
+            table.border = "1";
+
+            const headerRow = table.insertRow();
+            for (const key in allData[0]) {
+                headerRow.insertCell().innerHTML = `<b>${key}</b>`;
+            }
+            headerRow.insertCell().innerHTML = "<b>Command</b>";
+
+            for (const packageName of packagesArray) {
+                const appInfo = allData.find(data => data.id === packageName);
+
+                const row = table.insertRow();
+                if (appInfo) {
+                    for (const key in allData[0]) {
+                        if (key === "web") {
+                            row.insertCell().innerHTML = createWebLinks(appInfo[key]);
+                        } else {
+                            row.insertCell().innerHTML = appInfo[key] !== undefined ? appInfo[key] : "";
+                        }
+                    }
+                    const commandCell = row.insertCell();
+                    const command = `pm disable-user --user 0 ${packageName}`;
+                    commandCell.innerHTML = `<button class="copyButton" onclick="copyCommand('${command}')">Copy</button>`;
+                } else {
+                    row.insertCell().innerHTML = packageName;
+                    for (let i = 1; i < Object.keys(allData[0]).length; i++) {
+                        row.insertCell().innerHTML = "";
+                    }
+                    const commandCell = row.insertCell();
+                    const command = `pm disable-user --user 0 ${packageName}`;
+                    commandCell.innerHTML = `<button class="copyButton" onclick="copyCommand('${command}')">Copy</button>`;
+                }
+            }
+
+            resultTable.appendChild(table);
+        }
+
+        function createWebLinks(links) {
+            if (links && links.length > 0) {
+                return links.map(link => `<a class="webLinks" href="${link}" target="_blank">${link}</a>`).join('<br>');
+            } else {
+                return "";
+            }
+        }
+
+        function copyCommand(command) {
+            const resultTable = document.getElementById("resultTable");
+            const codeBlock = document.createElement("div");
+            codeBlock.className = "codeBlock";
+            codeBlock.textContent = command;
+            resultTable.appendChild(codeBlock);
+
+            copyToClipboard(command);
+        }
+    </script>
+<p>This page uses data from <a href="https://github.com/MuntashirAkon/android-debloat-list">MuntashirAkon/android-debloat-list</a> repository</p>
+</body>
+</html>
